@@ -2,10 +2,10 @@
 {
     public class DataModel
     {
-        public List<AddressData> Suggestions { get; set; }
+        public List<AdressSuggestions> Suggestions { get; set; }
     }
 
-    public class AddressData
+    public class AdressSuggestions
     {
         public string Value { get; set; }
     }

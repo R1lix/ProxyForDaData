@@ -1,68 +1,50 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
 using DaDataProxy.Models.Address;
+using DaDataProxy.Settings;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
-[ApiController]
-[Route("/proxy")]
 public class ProxyController : ControllerBase
 {
-    private readonly HttpClient _httpClient;
-    private readonly DataModel _dataModel;
-    private readonly IConfiguration _configuration;
+    private readonly ProxySettings _proxySettings;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-
-    public ProxyController(IConfiguration configuration)
+    public ProxyController(IOptions<ProxySettings> proxySettings, IHttpClientFactory httpClientFactory)
     {
-        _configuration = configuration;
-        _dataModel = new DataModel();
-        _httpClient = new HttpClient();
+        _proxySettings = proxySettings.Value;
+        _httpClientFactory = httpClientFactory;
     }
 
-    [HttpGet]
-    [Route("/proxy/getaddress")]
-    public async Task<IActionResult> GetAddressSuggestions(string query)
+    [HttpGet("/proxy/getaddress")]
+    public async Task<IActionResult> GetAddressSuggestionsAsync(string query)
     {
-        // Добавляем авторизационный заголовок
-        string _apiKey = _configuration.GetSection("ApiSettings:ApiKey").Value;
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Token {_apiKey}");
+        var httpFactory = _httpClientFactory.CreateClient();
         string authorizationHeader = Request.Headers["Authorization"];
 
-        // ENV переменная
-        string _proxyKey = _configuration.GetSection("Proxy-Authorization:ProxyKey").Value;
-        _httpClient.DefaultRequestHeaders.Add("Proxy-Authorization", $"Token {_proxyKey}");
-        string authProxy = Request.Headers["Proxy-Authorization"];
-
-
-        string apiUrl = $"https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address?query={query}";
-        HttpRequestMessage targetRequest = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-
-
-        if (string.IsNullOrEmpty(authorizationHeader))
+        if (authorizationHeader != _proxySettings.ProxyKey)
+        {
+            return StatusCode((int)HttpStatusCode.Unauthorized);
+        } 
+        else if (string.IsNullOrWhiteSpace(authorizationHeader))
         {
             return StatusCode((int)HttpStatusCode.Forbidden);
         }
-
-        if (authorizationHeader != _proxyKey)
-        {
-            return StatusCode((int)HttpStatusCode.Unauthorized);
-        }
-
-        HttpResponseMessage targetResponse = await _httpClient.SendAsync(targetRequest);
-
-        if (targetResponse.IsSuccessStatusCode)
-        {
-            string responseContent = await targetResponse.Content.ReadAsStringAsync();
-            DataModel dataModel = JsonConvert.DeserializeObject<DataModel>(responseContent);
-
-            List<string> streetsList = dataModel.Suggestions.Select(s => s.Value).ToList();
-            return Ok(streetsList);
-        }
         else
         {
-            return StatusCode((int)targetResponse.StatusCode);
+            httpFactory.DefaultRequestHeaders.Add("Authorization", $"Token {_proxySettings.ApiKey}");
+
+            using var targetRequest = new HttpRequestMessage(HttpMethod.Get, _proxySettings.BaseUrl + $"?query={query}");
+            using var targetResponse = await httpFactory.SendAsync(targetRequest);
+            string responseContent = await targetResponse.Content.ReadAsStringAsync();
+            var responseObject = JsonConvert.DeserializeObject<DataModel>(responseContent);
+            List<string> streetsList = responseObject.Suggestions.Select(x => x.Value).ToList();
+            return Ok(streetsList);
         }
     }
 }

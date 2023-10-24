@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using DaDataProxy.Settings;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,8 @@ namespace DaDataProxy.Startup
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers();
+            services.Configure<ProxySettings>(Configuration.GetSection("ProxySettings"));
+            services.AddHttpClient();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
